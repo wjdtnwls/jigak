@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>지각하지말자</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #E9EDF2;
+    --surface: #FFFFFF;
+    --ink: #14213D;
+    --ink-soft: #5B6577;
+    --line: #D5DBE4;
+    --taxi: #FFC93C;
+    --taxi-deep: #E8AE12;
+    --danger: #C8412F;
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0E1626;
+      --surface: #17233B;
+      --ink: #EEF2F8;
+      --ink-soft: #9AA7BD;
+      --line: #2A3957;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Noto Sans KR", system-ui, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .app {
+    max-width: 480px;
+    height: 100%;
+    margin: 0 auto;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .view { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 20px; overflow-y: auto; }
+  h1 { font-size: 30px; font-weight: 900; margin: 8px 0 4px; letter-spacing: -0.03em; }
+  h2 { font-size: 20px; font-weight: 700; margin: 0 0 6px; }
+  p { margin: 0 0 12px; }
+  .soft { color: var(--ink-soft); font-size: 14px; }
+
+  /* 폼 */
+  .tabs { display: flex; gap: 8px; margin: 20px 0 6px; }
+  .tab {
+    flex: 1; padding: 10px; border-radius: 10px; border: 1px solid var(--line);
+    background: transparent; color: var(--ink-soft); font: inherit; font-weight: 500; cursor: pointer;
+  }
+  .tab[aria-selected="true"] { background: var(--surface); color: var(--ink); border-color: var(--ink); font-weight: 700; }
+  label { display: block; font-size: 13px; font-weight: 500; margin: 12px 0 4px; }
+  input {
+    width: 100%; padding: 12px 14px; font: inherit; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  }
+  input:focus-visible, button:focus-visible, select:focus-visible { outline: 3px solid var(--taxi); outline-offset: 1px; }
+  .btn {
+    width: 100%; margin-top: 18px; padding: 14px; border: 0; border-radius: 12px;
+    background: var(--ink); color: var(--bg); font: inherit; font-weight: 700; font-size: 16px; cursor: pointer;
+  }
+  .btn.taxi { background: var(--taxi); color: #14213D; }
+  .btn.taxi:hover:not(:disabled) { background: var(--taxi-deep); }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .btn:disabled { opacity: 0.45; cursor: default; }
+  .err { color: var(--danger); font-size: 14px; min-height: 20px; margin-top: 10px; }
+  .link { background: none; border: 0; color: var(--ink-soft); text-decoration: underline; font: inherit; font-size: 14px; cursor: pointer; padding: 8px 0; }
+
+  .field-row { display: flex; gap: 8px; }
+  .field-row input { flex: 1; min-width: 0; }
+  .check {
+    flex: none; padding: 0 14px; border-radius: 10px; border: 1px solid var(--ink);
+    background: transparent; color: var(--ink); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+  }
+  .check:disabled { opacity: 0.45; cursor: default; }
+  .hint { font-size: 13px; min-height: 18px; margin-top: 4px; color: var(--ink-soft); }
+  .hint.ok { color: #2E9E6B; }
+  .hint.bad { color: var(--danger); }
+
+  /* 홈 */
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .topbar .who { font-size: 14px; color: var(--ink-soft); }
+  .topbar .brand { font-weight: 900; letter-spacing: -0.02em; }
+  .route {
+    background: var(--surface); border-radius: var(--radius); padding: 22px 20px;
+    display: grid; grid-template-columns: 28px 1fr; column-gap: 14px;
+  }
+  .route .rail { grid-row: 1 / span 3; position: relative; }
+  .route .rail::before {
+    content: ""; position: absolute; left: 50%; top: 14px; bottom: 14px; width: 0;
+    border-left: 3px dotted var(--line); transform: translateX(-50%);
+  }
+  .route .dot { position: absolute; left: 50%; width: 22px; height: 22px; transform: translateX(-50%); }
+  .route .dot.start { top: 0; border-radius: 50%; background: var(--taxi); box-shadow: 0 0 0 5px rgba(255,201,60,0.28); }
+  .route .dot.end { bottom: 0; border-radius: 5px; background: var(--ink); }
+  .route .stop small { display: block; font-size: 13px; font-weight: 500; color: var(--ink-soft); }
+  .route select {
+    width: 100%; padding: 6px 0 8px; font: inherit; font-size: 19px; font-weight: 700; color: var(--ink);
+    background: transparent; border: 0; border-bottom: 2px solid var(--line); border-radius: 0; cursor: pointer;
+  }
+  .route select:disabled { opacity: 0.7; cursor: default; }
+  .route .gap { height: 30px; }
+  .status {
+    margin-top: 16px; background: var(--surface); border-radius: var(--radius); padding: 16px 18px;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  }
+  .status strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+  .pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--taxi); display: inline-block; margin-right: 8px; animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+  @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+
+  /* 채팅 */
+  .chat-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .chat-head .route-line { font-size: 14px; font-weight: 700; }
+  .chat-head .names { font-size: 13px; color: var(--ink-soft); }
+  .chat-head .names b { color: var(--ink); font-weight: 700; }
+  .msgs { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 0; display: flex; flex-direction: column; gap: 8px; }
+  .msg { max-width: 78%; align-self: flex-start; }
+  .msg .nick { font-size: 12px; color: var(--ink-soft); margin: 0 4px 2px; }
+  .msg .bubble { background: var(--surface); padding: 9px 13px; border-radius: 16px 16px 16px 4px; word-break: break-word; white-space: pre-wrap; }
+  .msg .time { font-size: 11px; color: var(--ink-soft); margin: 2px 4px 0; }
+  .msg.me { align-self: flex-end; text-align: right; }
+  .msg.me .bubble { background: var(--ink); color: var(--bg); border-radius: 16px 16px 4px 16px; text-align: left; }
+  .msg.sys { align-self: center; max-width: 90%; text-align: center; font-size: 13px; color: var(--ink-soft); background: rgba(128,128,128,0.14); padding: 5px 12px; border-radius: 999px; }
+  .composer { display: flex; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .composer input { flex: 1; }
+  .composer .btn { width: auto; margin: 0; padding: 0 18px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- 로그인 / 회원가입 -->
+  <section class="view" id="auth" hidden>
+    <h1>지각하지말자</h1>
+    <p class="soft">같은 역에서 같은 대학으로 가는 사람과 택시를 같이 타요.</p>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-login" aria-selected="true">로그인</button>
+      <button class="tab" role="tab" id="tab-signup" aria-selected="false">회원가입</button>
+    </div>
+    <label for="username">아이디</label>
+    <div class="field-row">
+      <input id="username" autocomplete="username" autocapitalize="none" placeholder="영문 소문자, 숫자, _ (4~16자)">
+      <button class="check" id="username-check" type="button" hidden>중복확인</button>
+    </div>
+    <div class="hint" id="username-msg" hidden></div>
+    <div id="nick-wrap" hidden>
+      <label for="nickname">닉네임 (2~12자)</label>
+      <div class="field-row">
+        <input id="nickname" maxlength="12" autocomplete="nickname" placeholder="채팅에서 보여질 이름">
+        <button class="check" id="nickname-check" type="button">중복확인</button>
+      </div>
+      <div class="hint" id="nickname-msg"></div>
+    </div>
+    <label for="password">비밀번호 (8자 이상)</label>
+    <input id="password" type="password" autocomplete="current-password">
+    <div id="pw2-wrap" hidden>
+      <label for="password2">비밀번호 확인</label>
+      <input id="password2" type="password" autocomplete="new-password">
+    </div>
+    <button class="btn" id="auth-submit">로그인</button>
+    <div class="err" id="auth-err" role="alert"></div>
+  </section>
+
+  <!-- 홈 / 매칭 -->
+  <section class="view" id="home" hidden>
+    <div class="topbar">
+      <span class="brand">지각하지말자</span>
+      <span>
+        <span class="who" id="who"></span>
+        <button class="link" id="logout">로그아웃</button>
+      </span>
+    </div>
+    <div class="route">
+      <div class="rail"><span class="dot start"></span><span class="dot end"></span></div>
+      <div class="stop">
+        <small>출발역</small>
+        <select id="origin" aria-label="출발역"></select>
+      </div>
+      <div class="gap"></div>
+      <div class="stop">
+        <small>도착 대학</small>
+        <select id="dest" aria-label="도착 대학"></select>
+      </div>
+    </div>
+    <div class="status" id="queue-box" hidden>
+      <span><span class="pulse"></span>같은 조건 대기 <b id="q-count">1</b>명</span>
+      <strong id="q-time">0:00</strong>
+    </div>
+    <p class="soft" id="home-hint" style="margin-top:16px"></p>
+    <div style="flex:1"></div>
+    <button class="btn taxi" id="find" disabled>같이 탈 사람 찾기</button>
+    <button class="btn ghost" id="cancel" hidden>찾기 취소</button>
+    <div class="err" id="home-err" role="alert"></div>
+  </section>
+
+  <!-- 채팅 -->
+  <section class="view" id="room" hidden style="overflow:hidden">
+    <div class="chat-head">
+      <div>
+        <div class="route-line" id="room-route"></div>
+        <div class="names" id="members"></div>
+      </div>
+      <button class="link" id="leave">나가기</button>
+    </div>
+    <div class="msgs" id="msgs" aria-live="polite"></div>
+    <form class="composer" id="composer" onsubmit="return false">
+      <input id="text" maxlength="500" placeholder="메시지 입력" autocomplete="off" aria-label="메시지">
+      <button class="btn" id="send" type="submit">보내기</button>
+    </form>
+  </section>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+const CFG = {{ cfg|tojson }};
+const $ = (s) => document.querySelector(s);
+const VIEWS = ["auth", "home", "room"];
+
+let me = null, socket = null, currentRoom = null;
+let authMode = "login";
+let pollTimer = null, tickTimer = null, waitStart = 0, isWaiting = false;
+const seen = new Set();
+
+function show(name) { VIEWS.forEach((v) => ($("#" + v).hidden = v !== name)); }
+
+async function api(path, method = "GET", body) {
+  const res = await fetch("/api" + path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data = {};
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) throw new Error(data.error || "문제가 생겼어요. 잠시 후 다시 시도해주세요.");
+  return data;
+}
+
+/* ───── 로그인 / 회원가입 ───── */
+function setAuthMode(mode) {
+  authMode = mode;
+  const signup = mode === "signup";
+  $("#tab-login").setAttribute("aria-selected", !signup);
+  $("#tab-signup").setAttribute("aria-selected", signup);
+  $("#nick-wrap").hidden = !signup;
+  $("#pw2-wrap").hidden = !signup;
+  $("#username-check").hidden = !signup;
+  $("#username-msg").hidden = !signup;
+  resetChecks();
+  $("#auth-submit").textContent = signup ? "회원가입" : "로그인";
+  $("#password").autocomplete = signup ? "new-password" : "current-password";
+  $("#auth-err").textContent = "";
+}
+$("#tab-login").onclick = () => setAuthMode("login");
+$("#tab-signup").onclick = () => setAuthMode("signup");
+document.querySelectorAll("#auth input").forEach((el) =>
+  el.addEventListener("keydown", (e) => { if (e.key === "Enter") $("#auth-submit").click(); })
+);
+
+$("#auth-submit").onclick = async () => {
+  const btn = $("#auth-submit");
+  const username = $("#username").value.trim().toLowerCase();
+  const password = $("#password").value;
+  $("#auth-err").textContent = "";
+  btn.disabled = true;
+  try {
+    if (authMode === "signup") {
+      const nickname = $("#nickname").value.trim();
+      if (checked.username !== username) throw new Error("아이디 중복확인을 해주세요.");
+      if (checked.nickname !== nickname) throw new Error("닉네임 중복확인을 해주세요.");
+      if (password !== $("#password2").value) throw new Error("비밀번호 확인이 일치하지 않아요.");
+      const r = await api("/signup", "POST", { username, nickname, password });
+      await enterApp(r.user);
+    } else {
+      const r = await api("/login", "POST", { username, password });
+      await enterApp(r.user);
+    }
+  } catch (e) {
+    $("#auth-err").textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+/* ───── 아이디 / 닉네임 중복확인 ───── */
+// 중복확인을 통과한 값을 기억해 둬요. 입력이 바뀌면 다시 확인해야 해요.
+const checked = { username: null, nickname: null };
+
+function fieldValue(field) {
+  const v = $("#" + field).value.trim();
+  return field === "username" ? v.toLowerCase() : v;
+}
+
+function setMsg(field, text, kind) {
+  const el = $("#" + field + "-msg");
+  el.textContent = text;
+  el.className = "hint" + (kind ? " " + kind : "");
+}
+
+function resetChecks() {
+  checked.username = null;
+  checked.nickname = null;
+  setMsg("username", "");
+  setMsg("nickname", "");
+}
+
+async function checkField(field) {
+  const value = fieldValue(field);
+  checked[field] = null;
+  if (!value) {
+    setMsg(field, field === "username" ? "아이디를 입력해주세요." : "닉네임을 입력해주세요.", "bad");
+    return;
+  }
+  const btn = $("#" + field + "-check");
+  btn.disabled = true;
+  try {
+    const r = await api("/check?field=" + field + "&value=" + encodeURIComponent(value));
+    setMsg(field, r.message, r.available ? "ok" : "bad");
+    if (r.available) checked[field] = value;
+  } catch (e) {
+    setMsg(field, e.message, "bad");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+["username", "nickname"].forEach((field) => {
+  $("#" + field + "-check").onclick = () => checkField(field);
+  $("#" + field).addEventListener("input", () => {
+    checked[field] = null;
+    setMsg(field, "");
+  });
+});
+
+$("#logout").onclick = async () => {
+  await api("/logout", "POST");
+  location.reload();
+};
+
+/* ───── 앱 진입 ───── */
+async function enterApp(user) {
+  me = user;
+  connectSocket();
+  const info = await api("/me");
+  if (info.room_id) return openRoom(info.room_id);
+  renderHome(info.queue);
+}
+
+function connectSocket() {
+  if (socket) return;
+  socket = io();
+  socket.on("connect", () => { if (currentRoom) socket.emit("enter", { room_id: currentRoom }); });
+  socket.on("matched", (d) => openRoom(d.room_id));
+  socket.on("message", addMessage);
+  socket.on("members", (d) => { if (d.room_id === currentRoom) renderMembers(d.members); });
+}
+
+/* ───── 홈 / 매칭 ───── */
+function fillSelect(sel, groups, placeholder) {
+  sel.textContent = "";
+  const ph = document.createElement("option");
+  ph.value = "";
+  ph.textContent = placeholder;
+  sel.appendChild(ph);
+  groups.forEach((g) => {
+    const og = document.createElement("optgroup");
+    og.label = g.label;
+    g.items.forEach((name) => {
+      const o = document.createElement("option");
+      o.value = name;
+      o.textContent = name;
+      og.appendChild(o);
+    });
+    sel.appendChild(og);
+  });
+}
+
+function saveChoice() {
+  try { localStorage.setItem("jigak-route", JSON.stringify({ o: $("#origin").value, d: $("#dest").value })); } catch (e) {}
+}
+function loadChoice() {
+  try {
+    const c = JSON.parse(localStorage.getItem("jigak-route") || "null");
+    if (c) { $("#origin").value = c.o || ""; $("#dest").value = c.d || ""; }
+  } catch (e) {}
+}
+function updateFind() { $("#find").disabled = !($("#origin").value && $("#dest").value); }
+
+fillSelect($("#origin"), CFG.stations, "출발역을 선택하세요");
+fillSelect($("#dest"), CFG.universities, "도착 대학을 선택하세요");
+$("#origin").onchange = () => { saveChoice(); updateFind(); };
+$("#dest").onchange = () => { saveChoice(); updateFind(); };
+
+function renderHome(queue) {
+  currentRoom = null;
+  $("#who").textContent = `${me.nickname}님`;
+  $("#home-hint").textContent =
+    `같은 출발역, 같은 대학을 고른 사람끼리 매칭돼요. ${CFG.max}명이 모이면 바로 채팅방이 열리고, ${CFG.min}명 이상이면 ${CFG.wait}초 뒤에 열려요.`;
+  $("#home-err").textContent = "";
+  show("home");
+  if (!(queue && queue.waiting)) loadChoice();
+  applyQueue(queue);
+}
+
+function applyQueue(q) {
+  isWaiting = !!(q && q.waiting);
+  if (isWaiting) {
+    $("#origin").value = q.origin;
+    $("#dest").value = q.dest;
+  }
+  $("#origin").disabled = isWaiting;
+  $("#dest").disabled = isWaiting;
+  $("#queue-box").hidden = !isWaiting;
+  $("#find").hidden = isWaiting;
+  $("#cancel").hidden = !isWaiting;
+  updateFind();
+  clearInterval(tickTimer);
+  clearInterval(pollTimer);
+  if (!isWaiting) return;
+
+  $("#q-count").textContent = q.count;
+  waitStart = Date.now() - q.elapsed * 1000;
+  const tick = () => {
+    const s = Math.floor((Date.now() - waitStart) / 1000);
+    $("#q-time").textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  };
+  tick();
+  tickTimer = setInterval(tick, 1000);
+  // 소켓 알림을 놓쳐도 방이 열렸는지 확인하기 위한 보조 폴링
+  pollTimer = setInterval(async () => {
+    try {
+      const info = await api("/me");
+      if (info.room_id) return openRoom(info.room_id);
+      if (info.queue && info.queue.waiting) $("#q-count").textContent = info.queue.count;
+    } catch (e) {}
+  }, 2000);
+}
+
+$("#find").onclick = async () => {
+  $("#home-err").textContent = "";
+  try {
+    const r = await api("/queue/join", "POST", { origin: $("#origin").value, dest: $("#dest").value });
+    if (r.room_id) return openRoom(r.room_id);
+    applyQueue(r.queue);
+  } catch (e) {
+    $("#home-err").textContent = e.message;
+  }
+};
+$("#cancel").onclick = async () => {
+  try {
+    const r = await api("/queue/leave", "POST");
+    applyQueue(r.queue);
+  } catch (e) {
+    $("#home-err").textContent = e.message;
+  }
+};
+
+/* ───── 채팅 ───── */
+function hhmm(s) {
+  const d = new Date(s.replace(" ", "T") + "Z");
+  return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function renderMembers(list) {
+  const box = $("#members");
+  box.textContent = `${list.length}명 · `;
+  list.forEach((m, i) => {
+    const b = document.createElement("b");
+    b.textContent = m.nickname;
+    box.appendChild(b);
+    if (i < list.length - 1) box.append(", ");
+  });
+}
+
+function addMessage(m) {
+  if (m.room_id !== currentRoom || seen.has(m.id)) return;
+  seen.add(m.id);
+  const box = $("#msgs");
+  const row = document.createElement("div");
+  if (m.user_id === null) {
+    row.className = "msg sys";
+    row.textContent = m.text;
+  } else {
+    const mine = m.user_id === me.id;
+    row.className = "msg" + (mine ? " me" : "");
+    if (!mine) {
+      const nick = document.createElement("div");
+      nick.className = "nick";
+      nick.textContent = m.nickname;
+      row.appendChild(nick);
+    }
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = m.text;
+    const time = document.createElement("div");
+    time.className = "time";
+    time.textContent = hhmm(m.created_at);
+    row.append(bubble, time);
+  }
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+  box.appendChild(row);
+  if (nearBottom || m.user_id === me.id) box.scrollTop = box.scrollHeight;
+}
+
+async function openRoom(rid) {
+  clearInterval(tickTimer);
+  clearInterval(pollTimer);
+  if (currentRoom === rid) return;
+  try {
+    const r = await api("/room/" + rid);
+    currentRoom = rid;
+    seen.clear();
+    $("#msgs").textContent = "";
+    $("#room-route").textContent = `${r.origin} → ${r.dest}`;
+    renderMembers(r.members);
+    r.messages.forEach(addMessage);
+    socket.emit("enter", { room_id: rid });
+    show("room");
+    $("#msgs").scrollTop = $("#msgs").scrollHeight;
+    $("#text").focus();
+  } catch (e) {
+    const info = await api("/me");
+    renderHome(info.queue);
+  }
+}
+
+$("#composer").addEventListener("submit", () => {
+  const input = $("#text");
+  const text = input.value.trim();
+  if (!text) return;
+  socket.emit("send", { room_id: currentRoom, text });
+  input.value = "";
+});
+
+$("#leave").onclick = async () => {
+  if (!confirm("채팅방에서 나갈까요? 다시 들어올 수 없어요.")) return;
+  const rid = currentRoom;
+  await api("/room/" + rid + "/leave", "POST");
+  currentRoom = null;
+  const info = await api("/me");
+  renderHome(info.queue);
+};
+
+/* ───── 시작 ───── */
+(async function boot() {
+  setAuthMode("login");
+  try {
+    const info = await api("/me");
+    if (info.user) {
+      me = info.user;
+      connectSocket();
+      if (info.room_id) return openRoom(info.room_id);
+      return renderHome(info.queue);
+    }
+  } catch (e) {}
+  show("auth");
+})();
+</script>
+</body>
+</html>
