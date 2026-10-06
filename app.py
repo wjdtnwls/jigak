@@ -2,17 +2,23 @@
 지각하지말자 - 택시 합승 매칭 앱 (백엔드)
 
 기능
-  1. 일반 회원가입 / 로그인 (아이디 + 닉네임 + 비밀번호)
+  1. 일반 회원가입 / 로그인 (아이디 + 닉네임 + 비밀번호), 아이디·닉네임 중복확인
   2. 출발역(부산 내 모든 역) + 도착 대학(부산 내 모든 대학)을 고르면
      "같은 출발역 + 같은 대학"을 고른 사람끼리 대기열에서 매칭
        - 4명이 모이면 즉시 채팅방 오픈
        - 2~3명이면 10초 뒤 채팅방 오픈
-  3. 매칭되면 실시간 채팅 (Socket.IO)
+       - 서로 차단한 사람끼리는 같은 방에 묶이지 않음
+  3. 예상 택시비 표시 (거리 기반 추정)
+  4. 실시간 채팅 (Socket.IO), 빠른 메시지, 약속 장소 공유, 택시비 1/N 정산
+  5. 신고 / 차단
+  6. 마이페이지: 이용내역, 닉네임·비밀번호 변경, 차단 목록, 회원탈퇴
 
 실행:  python app.py   →  http://localhost:5000
 """
+import hmac
 import os
 import re
+import secrets
 import sqlite3
 import threading
 import time
@@ -23,14 +29,20 @@ from flask import Flask, jsonify, render_template, request, session
 from flask_socketio import SocketIO, emit, join_room
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from places import ALL_STATIONS, ALL_UNIVERSITIES, STATION_GROUPS, UNIVERSITY_GROUPS
+from places import (
+    ALL_STATIONS, ALL_UNIVERSITIES, STATION_GROUPS, UNIVERSITY_GROUPS, estimate_fare,
+)
 
 # ──────────────── 설정 ────────────────
 APP_NAME = "지각하지말자"
 MIN_PEOPLE, MAX_PEOPLE = 2, 4                                         # 매칭 인원
 MATCH_WAIT_SECONDS = int(os.environ.get("MATCH_WAIT_SECONDS", "10"))  # 2~3명일 때 기다리는 시간
 DB_PATH = os.environ.get("DB_PATH", "jigak.db")
+ADMIN_KEY = os.environ.get("ADMIN_KEY", "")                           # 설정하면 신고 목록을 볼 수 있어요
 USERNAME_RE = re.compile(r"^[a-z0-9_]{4,16}$")
+TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+REPORT_REASONS = ["비매너·욕설", "약속 불이행(노쇼)", "금전 요구·사기 의심", "부적절한 대화", "기타"]
+FARE_MIN, FARE_MAX = 1000, 300000
 # ───────────────────────────────────────
 
 app = Flask(__name__)
@@ -69,7 +81,33 @@ CREATE TABLE IF NOT EXISTS messages(
     text TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS blocks(
+    blocker_id INTEGER NOT NULL,
+    blocked_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(blocker_id, blocked_id)
+);
+CREATE TABLE IF NOT EXISTS reports(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reporter_id INTEGER NOT NULL,
+    target_id INTEGER NOT NULL,
+    room_id INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    detail TEXT,
+    created_at TEXT NOT NULL
+);
 """
+
+# 예전 버전 DB(jigak.db)에도 새 기능이 동작하도록, 없는 칸은 자동으로 추가해요.
+ROOM_EXTRA_COLUMNS = [
+    ("meet_place", "TEXT"),
+    ("meet_time", "TEXT"),
+    ("meet_by", "INTEGER"),
+    ("fare_total", "INTEGER"),
+    ("fare_payer", "INTEGER"),
+    ("fare_people", "INTEGER"),
+    ("fare_per", "INTEGER"),
+]
 
 
 def now():
@@ -99,6 +137,10 @@ def run(sql, args=(), one=False, write=False):
 def init_db():
     conn = db()
     conn.executescript(SCHEMA)
+    have = {r["name"] for r in conn.execute("PRAGMA table_info(rooms)")}
+    for name, ddl in ROOM_EXTRA_COLUMNS:
+        if name not in have:
+            conn.execute(f"ALTER TABLE rooms ADD COLUMN {name} {ddl}")
     conn.commit()
     conn.close()
 
@@ -123,6 +165,16 @@ def login_required(fn):
 
 def user_payload(u):
     return {"id": u["id"], "username": u["username"], "nickname": u["nickname"]}
+
+
+def nickname_error(nickname, exclude_uid=None):
+    """닉네임이 쓸 수 없으면 이유(문자열), 쓸 수 있으면 None."""
+    if not 2 <= len(nickname) <= 12:
+        return "닉네임은 2~12자로 입력해주세요."
+    row = run("SELECT id FROM users WHERE nickname=? COLLATE NOCASE", (nickname,), one=True)
+    if row and row["id"] != exclude_uid:
+        return "이미 사용 중인 닉네임이에요."
+    return None
 
 
 # ──────────────── 방 도우미 ────────────────
@@ -154,6 +206,40 @@ def members_of(rid):
     return [{"id": r["id"], "nickname": r["nickname"]} for r in rows]
 
 
+def shared_room(a, b):
+    """두 사람이 같은 방에 함께 있었던 적이 있는지 (신고/차단은 같이 탄 사람만 가능)."""
+    row = run(
+        "SELECT 1 FROM room_members x JOIN room_members y ON x.room_id = y.room_id "
+        "WHERE x.user_id=? AND y.user_id=? LIMIT 1",
+        (a, b), one=True,
+    )
+    return row is not None
+
+
+def room_state(rid):
+    """약속 장소 / 정산 정보 (화면 위쪽 안내 카드에 쓰여요)."""
+    r = run("SELECT * FROM rooms WHERE id=?", (rid,), one=True)
+    if not r:
+        return None
+    state = {"meet": None, "fare": None}
+    if r["meet_place"]:
+        by = run("SELECT nickname FROM users WHERE id=?", (r["meet_by"],), one=True)
+        state["meet"] = {
+            "place": r["meet_place"], "time": r["meet_time"], "by": by["nickname"] if by else None,
+        }
+    if r["fare_total"]:
+        payer = run("SELECT nickname FROM users WHERE id=?", (r["fare_payer"],), one=True)
+        state["fare"] = {
+            "total": r["fare_total"], "people": r["fare_people"], "per": r["fare_per"],
+            "payer_id": r["fare_payer"], "payer": payer["nickname"] if payer else None,
+        }
+    return state
+
+
+def broadcast_state(rid):
+    socketio.emit("room_state", {"room_id": rid, "state": room_state(rid)}, to=f"room:{rid}")
+
+
 def post_system(rid, text):
     created = now()
     mid = run(
@@ -165,6 +251,20 @@ def post_system(rid, text):
         {"id": mid, "room_id": rid, "user_id": None, "nickname": None, "text": text, "created_at": created},
         to=f"room:{rid}",
     )
+
+
+def leave_room_now(uid, nickname, rid):
+    """방에서 나가기. 아무도 안 남으면 방을 닫아요."""
+    run(
+        "UPDATE room_members SET left_at=? WHERE room_id=? AND user_id=?",
+        (now(), rid, uid), write=True,
+    )
+    remaining = members_of(rid)
+    if remaining:
+        post_system(rid, f"{nickname}님이 나갔어요.")
+        socketio.emit("members", {"room_id": rid, "members": remaining}, to=f"room:{rid}")
+    else:
+        run("UPDATE rooms SET closed_at=? WHERE id=?", (now(), rid), write=True)
 
 
 # ──────────────── 매칭 ────────────────
@@ -184,7 +284,7 @@ def create_room(origin, dest, user_ids):
         )
         conn.execute(
             "INSERT INTO messages(room_id, user_id, text, created_at) VALUES (?,NULL,?,?)",
-            (rid, f"{len(user_ids)}명이 모였어요. 인사하고 만날 위치와 시간을 정해보세요.", now()),
+            (rid, f"{len(user_ids)}명이 모였어요. 인사하고 만날 장소와 시간을 정해보세요.", now()),
         )
         conn.commit()
     finally:
@@ -192,30 +292,53 @@ def create_room(origin, dest, user_ids):
     return rid
 
 
-def try_match():
-    """같은 (출발역, 도착 대학)을 고른 대기자끼리 방을 만든다.
-    - 4명이 모이면 즉시 매칭
-    - 2~3명이면 가장 오래 기다린 사람이 MATCH_WAIT_SECONDS(10초) 이상 기다렸을 때 매칭
+def load_block_pairs():
+    """서로 한 번이라도 차단한 사람 쌍 (방향 상관없이)."""
+    pairs = set()
+    for r in run("SELECT blocker_id, blocked_id FROM blocks"):
+        pairs.add((r["blocker_id"], r["blocked_id"]))
+        pairs.add((r["blocked_id"], r["blocker_id"]))
+    return pairs
+
+
+def pick_batch(members, pairs):
+    """대기자(오래 기다린 순)에서 서로 차단 관계가 없는 묶음을 고른다.
+    - 4명이 되면 바로 반환
+    - 2~3명이면 묶음의 첫 사람이 MATCH_WAIT_SECONDS 이상 기다렸을 때 반환
     """
+    for i in range(len(members)):
+        batch = [members[i]]
+        for cand in members[i + 1:]:
+            if len(batch) == MAX_PEOPLE:
+                break
+            if all((cand[0], b[0]) not in pairs for b in batch):
+                batch.append(cand)
+        if len(batch) == MAX_PEOPLE:
+            return batch
+        if len(batch) >= MIN_PEOPLE and time.time() - batch[0][1] >= MATCH_WAIT_SECONDS:
+            return batch
+    return None
+
+
+def try_match():
+    """같은 (출발역, 도착 대학)을 고른 대기자끼리 방을 만든다."""
     created = []
     with waiting_lock:
+        if len(waiting) < MIN_PEOPLE:
+            return
+        pairs = load_block_pairs()
         groups = {}
         for uid, w in waiting.items():
             groups.setdefault((w["origin"], w["dest"]), []).append((uid, w["since"]))
 
         for (origin, dest), members in groups.items():
             members.sort(key=lambda m: m[1])  # 오래 기다린 순
-            while members:
-                n = len(members)
-                oldest_wait = time.time() - members[0][1]
-                if n >= MAX_PEOPLE:
-                    take = MAX_PEOPLE
-                elif n >= MIN_PEOPLE and oldest_wait >= MATCH_WAIT_SECONDS:
-                    take = n
-                else:
+            while len(members) >= MIN_PEOPLE:
+                batch = pick_batch(members, pairs)
+                if not batch:
                     break
-                batch, members = members[:take], members[take:]
                 ids = [uid for uid, _ in batch]
+                members = [m for m in members if m[0] not in ids]
                 for uid in ids:
                     waiting.pop(uid, None)
                 created.append((create_room(origin, dest, ids), ids))
@@ -259,6 +382,7 @@ def index():
         "min": MIN_PEOPLE,
         "max": MAX_PEOPLE,
         "wait": MATCH_WAIT_SECONDS,
+        "reasons": REPORT_REASONS,
         "stations": [{"label": label, "items": items} for label, items in STATION_GROUPS],
         "universities": [{"label": label, "items": items} for label, items in UNIVERSITY_GROUPS],
     }
@@ -297,7 +421,7 @@ def signup():
 
 @app.get("/api/check")
 def check_duplicate():
-    """회원가입 화면의 '중복확인' 버튼용. 쓸 수 있으면 available=True."""
+    """회원가입 / 닉네임 변경 화면의 '중복확인' 버튼용. 쓸 수 있으면 available=True."""
     field = request.args.get("field")
     value = (request.args.get("value") or "").strip()
 
@@ -310,10 +434,10 @@ def check_duplicate():
         return jsonify(available=True, message="사용할 수 있는 아이디예요.")
 
     if field == "nickname":
-        if not 2 <= len(value) <= 12:
-            return jsonify(available=False, message="닉네임은 2~12자로 입력해주세요.")
-        if run("SELECT 1 FROM users WHERE nickname=? COLLATE NOCASE", (value,), one=True):
-            return jsonify(available=False, message="이미 사용 중인 닉네임이에요.")
+        me_row = current_user()  # 로그인한 상태에서 본인 닉네임을 확인하면 '사용 가능'으로 봐요
+        err = nickname_error(value, exclude_uid=me_row["id"] if me_row else None)
+        if err:
+            return jsonify(available=False, message=err)
         return jsonify(available=True, message="사용할 수 있는 닉네임이에요.")
 
     return jsonify(error="잘못된 요청이에요."), 400
@@ -352,7 +476,192 @@ def me():
     )
 
 
+# ──────────────── API: 마이페이지 ────────────────
+@app.post("/api/me/nickname")
+@login_required
+def change_nickname(user):
+    nickname = ((request.get_json(silent=True) or {}).get("nickname") or "").strip()
+    err = nickname_error(nickname, exclude_uid=user["id"])
+    if err:
+        return jsonify(error=err), 400
+    try:
+        run("UPDATE users SET nickname=? WHERE id=?", (nickname, user["id"]), write=True)
+    except sqlite3.IntegrityError:
+        return jsonify(error="이미 사용 중인 닉네임이에요."), 409
+    return jsonify(ok=True, nickname=nickname)
+
+
+@app.post("/api/me/password")
+@login_required
+def change_password(user):
+    d = request.get_json(silent=True) or {}
+    if not check_password_hash(user["pw_hash"], d.get("current") or ""):
+        return jsonify(error="현재 비밀번호가 맞지 않아요."), 400
+    new = d.get("new") or ""
+    if len(new) < 8:
+        return jsonify(error="새 비밀번호는 8자 이상이어야 해요."), 400
+    run("UPDATE users SET pw_hash=? WHERE id=?", (generate_password_hash(new), user["id"]), write=True)
+    return jsonify(ok=True)
+
+
+@app.post("/api/me/delete")
+@login_required
+def delete_account(user):
+    d = request.get_json(silent=True) or {}
+    if not check_password_hash(user["pw_hash"], d.get("password") or ""):
+        return jsonify(error="비밀번호가 맞지 않아요."), 400
+    uid = user["id"]
+    with waiting_lock:
+        waiting.pop(uid, None)
+    rid = active_room_id(uid)
+    if rid:
+        leave_room_now(uid, user["nickname"], rid)
+    # 대화 기록 보존을 위해 행은 남기고, 개인 정보만 지워요. 이 계정으로는 다시 로그인할 수 없어요.
+    run(
+        "UPDATE users SET username=?, nickname=?, pw_hash=? WHERE id=?",
+        (f"deleted_{uid}", f"탈퇴회원{uid}", generate_password_hash(secrets.token_hex(16)), uid),
+        write=True,
+    )
+    run("DELETE FROM blocks WHERE blocker_id=?", (uid,), write=True)
+    session.pop("uid", None)
+    return jsonify(ok=True)
+
+
+@app.get("/api/history")
+@login_required
+def history(user):
+    rows = run(
+        "SELECT r.id, r.origin, r.dest, r.created_at, r.closed_at, r.fare_total, r.fare_per, "
+        "r.fare_people, rm.left_at "
+        "FROM room_members rm JOIN rooms r ON r.id = rm.room_id "
+        "WHERE rm.user_id=? ORDER BY r.id DESC LIMIT 30",
+        (user["id"],),
+    )
+    blocked = {r["blocked_id"] for r in run("SELECT blocked_id FROM blocks WHERE blocker_id=?", (user["id"],))}
+    out = []
+    for r in rows:
+        others = run(
+            "SELECT u.id, u.nickname FROM room_members m JOIN users u ON u.id = m.user_id "
+            "WHERE m.room_id=? AND m.user_id != ? ORDER BY u.id",
+            (r["id"], user["id"]),
+        )
+        out.append({
+            "id": r["id"], "origin": r["origin"], "dest": r["dest"], "created_at": r["created_at"],
+            "active": r["left_at"] is None and r["closed_at"] is None,
+            "fare_total": r["fare_total"], "fare_per": r["fare_per"], "fare_people": r["fare_people"],
+            "members": [{"id": o["id"], "nickname": o["nickname"], "blocked": o["id"] in blocked} for o in others],
+        })
+    return jsonify(history=out)
+
+
+# ──────────────── API: 신고 / 차단 ────────────────
+@app.get("/api/blocks")
+@login_required
+def list_blocks(user):
+    rows = run(
+        "SELECT u.id, u.nickname FROM blocks b JOIN users u ON u.id = b.blocked_id "
+        "WHERE b.blocker_id=? ORDER BY b.created_at DESC",
+        (user["id"],),
+    )
+    return jsonify(blocks=[{"id": r["id"], "nickname": r["nickname"]} for r in rows])
+
+
+def _target_id(d):
+    try:
+        return int(d.get("target_id"))
+    except (TypeError, ValueError):
+        return None
+
+
+@app.post("/api/block")
+@login_required
+def block_user(user):
+    target = _target_id(request.get_json(silent=True) or {})
+    if not target or target == user["id"]:
+        return jsonify(error="차단할 수 없는 대상이에요."), 400
+    if not shared_room(user["id"], target):
+        return jsonify(error="같이 채팅한 적이 있는 사람만 차단할 수 있어요."), 403
+    run(
+        "INSERT OR IGNORE INTO blocks(blocker_id, blocked_id, created_at) VALUES (?,?,?)",
+        (user["id"], target, now()), write=True,
+    )
+    return jsonify(ok=True)
+
+
+@app.post("/api/unblock")
+@login_required
+def unblock_user(user):
+    target = _target_id(request.get_json(silent=True) or {})
+    if not target:
+        return jsonify(error="잘못된 요청이에요."), 400
+    run("DELETE FROM blocks WHERE blocker_id=? AND blocked_id=?", (user["id"], target), write=True)
+    return jsonify(ok=True)
+
+
+@app.post("/api/report")
+@login_required
+def report_user(user):
+    d = request.get_json(silent=True) or {}
+    target = _target_id(d)
+    reason = d.get("reason")
+    detail = str(d.get("detail") or "").strip()[:300]
+    try:
+        rid = int(d.get("room_id"))
+    except (TypeError, ValueError):
+        rid = None
+
+    if not target or target == user["id"] or not rid:
+        return jsonify(error="신고할 수 없는 대상이에요."), 400
+    if reason not in REPORT_REASONS:
+        return jsonify(error="신고 사유를 선택해주세요."), 400
+    both_in_room = run(
+        "SELECT COUNT(*) AS c FROM room_members WHERE room_id=? AND user_id IN (?,?)",
+        (rid, user["id"], target), one=True,
+    )["c"] == 2
+    if not both_in_room:
+        return jsonify(error="같은 채팅방에 있었던 사람만 신고할 수 있어요."), 403
+    if run(
+        "SELECT 1 FROM reports WHERE reporter_id=? AND target_id=? AND room_id=?",
+        (user["id"], target, rid), one=True,
+    ):
+        return jsonify(error="이미 신고한 사용자예요."), 409
+
+    run(
+        "INSERT INTO reports(reporter_id, target_id, room_id, reason, detail, created_at) VALUES (?,?,?,?,?,?)",
+        (user["id"], target, rid, reason, detail, now()), write=True,
+    )
+    if d.get("also_block"):
+        run(
+            "INSERT OR IGNORE INTO blocks(blocker_id, blocked_id, created_at) VALUES (?,?,?)",
+            (user["id"], target, now()), write=True,
+        )
+    return jsonify(ok=True)
+
+
+@app.get("/api/admin/reports")
+def admin_reports():
+    """ADMIN_KEY 환경변수를 설정한 경우에만 열려요. 요청 헤더 X-Admin-Key 로 확인해요."""
+    key = request.headers.get("X-Admin-Key", "")
+    if not ADMIN_KEY or not hmac.compare_digest(key, ADMIN_KEY):
+        return jsonify(error="권한이 없어요."), 403
+    rows = run(
+        "SELECT r.id, r.room_id, r.reason, r.detail, r.created_at, "
+        "a.nickname AS reporter, b.nickname AS target "
+        "FROM reports r JOIN users a ON a.id = r.reporter_id JOIN users b ON b.id = r.target_id "
+        "ORDER BY r.id DESC LIMIT 100"
+    )
+    return jsonify(reports=[dict(r) for r in rows])
+
+
 # ──────────────── API: 매칭 ────────────────
+@app.get("/api/estimate")
+def estimate():
+    origin, dest = request.args.get("origin"), request.args.get("dest")
+    if origin not in ALL_STATIONS or dest not in ALL_UNIVERSITIES:
+        return jsonify(estimate=None)
+    return jsonify(estimate=estimate_fare(origin, dest))
+
+
 @app.post("/api/queue/join")
 @login_required
 def queue_join(user):
@@ -388,6 +697,7 @@ def room_info(user, rid):
     if not is_member(user["id"], rid):
         return jsonify(error="참여 중인 방이 아니에요."), 403
     room = run("SELECT origin, dest FROM rooms WHERE id=?", (rid,), one=True)
+    blocked = [r["blocked_id"] for r in run("SELECT blocked_id FROM blocks WHERE blocker_id=?", (user["id"],))]
     rows = run(
         "SELECT m.id, m.user_id, m.text, m.created_at, u.nickname "
         "FROM messages m LEFT JOIN users u ON u.id = m.user_id "
@@ -400,10 +710,12 @@ def room_info(user, rid):
             "nickname": r["nickname"], "text": r["text"], "created_at": r["created_at"],
         }
         for r in reversed(rows)
+        if r["user_id"] not in blocked  # 내가 차단한 사람의 메시지는 보이지 않아요
     ]
     return jsonify(
         room_id=rid, origin=room["origin"], dest=room["dest"],
-        members=members_of(rid), messages=messages,
+        members=members_of(rid), messages=messages, blocked=blocked,
+        state=room_state(rid), estimate=estimate_fare(room["origin"], room["dest"]),
     )
 
 
@@ -412,17 +724,59 @@ def room_info(user, rid):
 def room_leave(user, rid):
     if not is_member(user["id"], rid):
         return jsonify(ok=True)
-    run(
-        "UPDATE room_members SET left_at=? WHERE room_id=? AND user_id=?",
-        (now(), rid, user["id"]), write=True,
-    )
-    remaining = members_of(rid)
-    if remaining:
-        post_system(rid, f"{user['nickname']}님이 나갔어요.")
-        socketio.emit("members", {"room_id": rid, "members": remaining}, to=f"room:{rid}")
-    else:
-        run("UPDATE rooms SET closed_at=? WHERE id=?", (now(), rid), write=True)
+    leave_room_now(user["id"], user["nickname"], rid)
     return jsonify(ok=True)
+
+
+@app.post("/api/room/<int:rid>/meet")
+@login_required
+def room_meet(user, rid):
+    """만날 장소(와 시간)를 정해서 모두에게 공유."""
+    if not is_member(user["id"], rid):
+        return jsonify(error="참여 중인 방이 아니에요."), 403
+    d = request.get_json(silent=True) or {}
+    place = str(d.get("place") or "").strip()[:40]
+    t = str(d.get("time") or "").strip()
+    if not place:
+        return jsonify(error="만날 장소를 입력해주세요."), 400
+    if t and not TIME_RE.match(t):
+        return jsonify(error="시간 형식이 맞지 않아요."), 400
+    run(
+        "UPDATE rooms SET meet_place=?, meet_time=?, meet_by=? WHERE id=?",
+        (place, t or None, user["id"], rid), write=True,
+    )
+    post_system(rid, f"{user['nickname']}님이 만날 장소를 정했어요: {place}" + (f" ({t})" if t else ""))
+    broadcast_state(rid)
+    return jsonify(ok=True, state=room_state(rid))
+
+
+@app.post("/api/room/<int:rid>/fare")
+@login_required
+def room_fare(user, rid):
+    """택시비를 입력하면 지금 방에 있는 인원수로 나눠서 모두에게 보여줘요. (결제한 사람 = 입력한 사람)"""
+    if not is_member(user["id"], rid):
+        return jsonify(error="참여 중인 방이 아니에요."), 403
+    try:
+        total = int((request.get_json(silent=True) or {}).get("total"))
+    except (TypeError, ValueError):
+        return jsonify(error="택시비를 숫자로 입력해주세요."), 400
+    if not FARE_MIN <= total <= FARE_MAX:
+        return jsonify(error=f"택시비는 {FARE_MIN:,}원 ~ {FARE_MAX:,}원 사이로 입력해주세요."), 400
+
+    people = len(members_of(rid))
+    per = -(-total // people)              # 올림
+    per = -(-per // 10) * 10               # 10원 단위로 올림
+    run(
+        "UPDATE rooms SET fare_total=?, fare_payer=?, fare_people=?, fare_per=? WHERE id=?",
+        (total, user["id"], people, per, rid), write=True,
+    )
+    post_system(
+        rid,
+        f"{user['nickname']}님이 택시비 {total:,}원을 결제했어요. {people}명이 나누면 1인당 {per:,}원이에요. "
+        f"{user['nickname']}님께 보내주세요.",
+    )
+    broadcast_state(rid)
+    return jsonify(ok=True, per=per, people=people, state=room_state(rid))
 
 
 # ──────────────── Socket.IO ────────────────
@@ -477,8 +831,10 @@ def on_send(data):
     )
 
 
+# 서버를 켤 때마다 DB 준비 (python app.py 로 실행하든, 다른 서버로 실행하든 동일)
+init_db()
+
 if __name__ == "__main__":
-    init_db()
     socketio.start_background_task(matcher_loop)
     # 배포 서비스(Render 등)는 PORT 환경변수로 포트를 알려줘요. 내 컴퓨터에서는 5000번을 써요.
     port = int(os.environ.get("PORT", "5000"))
