@@ -301,21 +301,18 @@ def load_block_pairs():
     return pairs
 
 
-def pick_batch(members, pairs):
-    """대기자(오래 기다린 순)에서 서로 차단 관계가 없는 묶음을 고른다.
-    - 4명이 되면 바로 반환
-    - 2~3명이면 묶음의 첫 사람이 MATCH_WAIT_SECONDS 이상 기다렸을 때 반환
+def pick_batch(members, pairs, want):
+    """대기자(오래 기다린 순)에서 서로 차단 관계가 없는 want명 묶음을 고른다.
+    want명이 모이면 바로 반환한다.
     """
     for i in range(len(members)):
         batch = [members[i]]
         for cand in members[i + 1:]:
-            if len(batch) == MAX_PEOPLE:
+            if len(batch) == want:
                 break
             if all((cand[0], b[0]) not in pairs for b in batch):
                 batch.append(cand)
-        if len(batch) == MAX_PEOPLE:
-            return batch
-        if len(batch) >= MIN_PEOPLE and time.time() - batch[0][1] >= MATCH_WAIT_SECONDS:
+        if len(batch) == want:
             return batch
     return None
 
@@ -329,12 +326,12 @@ def try_match():
         pairs = load_block_pairs()
         groups = {}
         for uid, w in waiting.items():
-            groups.setdefault((w["origin"], w["dest"]), []).append((uid, w["since"]))
+            groups.setdefault((w["origin"], w["dest"], w["want"]), []).append((uid, w["since"]))
 
-        for (origin, dest), members in groups.items():
+        for (origin, dest, want), members in groups.items():
             members.sort(key=lambda m: m[1])  # 오래 기다린 순
-            while len(members) >= MIN_PEOPLE:
-                batch = pick_batch(members, pairs)
+            while len(members) >= want:
+                batch = pick_batch(members, pairs, want)
                 if not batch:
                     break
                 ids = [uid for uid, _ in batch]
@@ -361,9 +358,10 @@ def queue_status(uid):
     with waiting_lock:
         w = waiting.get(uid)
         if not w:
-            return {"waiting": False, "count": 0, "elapsed": 0, "origin": None, "dest": None}
+            return {"waiting": False, "count": 0, "elapsed": 0, "origin": None, "dest": None, "want": None}
         same_route = sum(
-            1 for x in waiting.values() if x["origin"] == w["origin"] and x["dest"] == w["dest"]
+            1 for x in waiting.values()
+            if x["origin"] == w["origin"] and x["dest"] == w["dest"] and x["want"] == w["want"]
         )
         return {
             "waiting": True,
@@ -371,6 +369,7 @@ def queue_status(uid):
             "elapsed": int(time.time() - w["since"]),
             "origin": w["origin"],
             "dest": w["dest"],
+            "want": w["want"],
         }
 
 
@@ -551,7 +550,16 @@ def history(user):
             "fare_total": r["fare_total"], "fare_per": r["fare_per"], "fare_people": r["fare_people"],
             "members": [{"id": o["id"], "nickname": o["nickname"], "blocked": o["id"] in blocked} for o in others],
         })
-    return jsonify(history=out)
+    # 절약 금액: 정산이 기록된 모든 이용에서 (혼자 탔다면 낸 택시비 전액) - (실제 내 부담금)
+    srows = run(
+        "SELECT r.fare_total, r.fare_per FROM room_members rm JOIN rooms r ON r.id = rm.room_id "
+        "WHERE rm.user_id=? AND r.fare_total IS NOT NULL AND r.fare_per IS NOT NULL AND r.fare_people >= 2",
+        (user["id"],),
+    )
+    alone = sum(r["fare_total"] for r in srows)
+    paid = sum(min(r["fare_per"], r["fare_total"]) for r in srows)
+    savings = {"count": len(srows), "alone": alone, "paid": paid, "saved": max(alone - paid, 0)}
+    return jsonify(history=out, savings=savings)
 
 
 # ──────────────── API: 신고 / 차단 ────────────────
@@ -671,13 +679,19 @@ def queue_join(user):
         return jsonify(error="출발역을 선택해주세요."), 400
     if dest not in ALL_UNIVERSITIES:
         return jsonify(error="도착 대학을 선택해주세요."), 400
+    try:
+        want = int(d.get("want", MAX_PEOPLE))
+    except (TypeError, ValueError):
+        want = 0
+    if not (MIN_PEOPLE <= want <= MAX_PEOPLE):
+        return jsonify(error=f"인원은 {MIN_PEOPLE}~{MAX_PEOPLE}명 중에서 골라주세요."), 400
     if active_room_id(user["id"]):
         return jsonify(error="이미 참여 중인 채팅방이 있어요."), 409
 
     with waiting_lock:
         w = waiting.get(user["id"])
-        if not w or w["origin"] != origin or w["dest"] != dest:
-            waiting[user["id"]] = {"since": time.time(), "origin": origin, "dest": dest}
+        if not w or (w["origin"], w["dest"], w["want"]) != (origin, dest, want):
+            waiting[user["id"]] = {"since": time.time(), "origin": origin, "dest": dest, "want": want}
     try_match()
     return jsonify(queue=queue_status(user["id"]), room_id=active_room_id(user["id"]))
 
