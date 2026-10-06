@@ -167,6 +167,17 @@
     flex: none; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface);
     color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
   }
+  .qtoggle { flex: none; width: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 18px; cursor: pointer; }
+  .qtoggle[aria-expanded="true"] { background: var(--ink); color: var(--bg); }
+  .qpanel { border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 10px; margin: 6px 0; max-height: 40vh; overflow-y: auto; }
+  .qrow { display: flex; gap: 8px; }
+  .qrow input { flex: 1; min-width: 0; }
+  .qrow .btn { width: auto; margin: 0; padding: 0 14px; white-space: nowrap; }
+  .qpay .hint { margin: 6px 0; min-height: 1.2em; }
+  .qpay > .btn { margin-top: 4px; }
+  .qgroup + .qgroup { margin-top: 10px; }
+  .qgroup h4 { margin: 0 0 6px; font-size: 12px; color: var(--ink-soft); font-weight: 600; }
+  .qgroup .qlist { display: flex; flex-wrap: wrap; gap: 6px; }
   .composer { display: flex; gap: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
   .composer input { flex: 1; }
   .composer .btn { width: auto; margin: 0; padding: 0 18px; }
@@ -308,8 +319,9 @@
       <div class="pin-row"><span class="pin-k">택시비</span><span class="pin-v" id="pin-fare"></span></div>
     </div>
     <div class="msgs" id="msgs" aria-live="polite"></div>
-    <div class="chips" id="chips" aria-label="빠른 메시지"></div>
+    <div class="qpanel" id="qpanel" hidden aria-label="빠른 메시지"></div>
     <form class="composer" id="composer" onsubmit="return false">
+      <button class="qtoggle" id="qtoggle" type="button" aria-expanded="false" aria-label="빠른 메시지 열기">⚡</button>
       <input id="text" maxlength="500" placeholder="메시지 입력" autocomplete="off" aria-label="메시지">
       <button class="btn" id="send" type="submit">보내기</button>
     </form>
@@ -430,7 +442,13 @@
 const CFG = {{ cfg|tojson }};
 const $ = (s) => document.querySelector(s);
 const VIEWS = ["auth", "home", "room", "mypage"];
-const QUICK = ["지금 가는 중이에요", "5분 정도 늦어요", "도착했어요", "택시 잡았어요", "어디 계세요?", "알겠어요"];
+const QUICK_GROUPS = [
+  ["이동 상황", ["지금 가는 중이에요", "5분 정도 늦어요", "10분 정도 늦어요", "도착했어요", "역 앞에 있어요"]],
+  ["만나기", ["어디 계세요?", "몇 번 출구에서 볼까요?", "저 빨간 옷 입고 있어요", "잠시만요, 곧 가요"]],
+  ["출구", [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `${n}번 출구에서 봐요`)],
+  ["택시·정산", ["택시 잡았어요", "택시 탔어요", "제가 먼저 결제할게요", "정산 부탁드려요", "송금했어요"]],
+  ["인사", ["안녕하세요!", "알겠어요", "감사합니다", "다음에 또 같이 타요"]],
+];
 
 let me = null, socket = null, currentRoom = null;
 let authMode = "login";
@@ -833,15 +851,57 @@ $("#composer").addEventListener("submit", () => {
   input.value = "";
 });
 
-/* 빠른 메시지 */
-QUICK.forEach((t) => {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.className = "chip";
-  b.textContent = t;
-  b.onclick = () => sendText(t);
-  $("#chips").appendChild(b);
+/* 빠른 메시지 (하나로 묶어서 펼치기) */
+QUICK_GROUPS.forEach(([title, items]) => {
+  const g = document.createElement("div");
+  g.className = "qgroup";
+  const h = document.createElement("h4");
+  h.textContent = title;
+  const l = document.createElement("div");
+  l.className = "qlist";
+  items.forEach((t) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip";
+    b.textContent = t;
+    b.onclick = () => { sendText(t); setQuick(false); };
+    l.appendChild(b);
+  });
+  g.append(h, l);
+  $("#qpanel").appendChild(g);
 });
+/* 도착 후 정산 + 나가기 (패널 맨 아래) */
+(function () {
+  const g = document.createElement("div");
+  g.className = "qgroup qpay";
+  g.innerHTML = '<h4>도착 후 정산</h4>' +
+    '<div class="qrow"><input id="q-total" type="number" inputmode="numeric" min="1000" step="100" placeholder="나온 택시비 (원)" aria-label="나온 택시비">' +
+    '<button type="button" class="btn" id="q-calc">N빵 계산</button></div>' +
+    '<div class="hint ok" id="q-result" role="status"></div>' +
+    '<button type="button" class="btn ghost" id="q-leave">채팅방 나가기</button>';
+  $("#qpanel").appendChild(g);
+})();
+$("#q-calc").onclick = async () => {
+  const v = parseInt($("#q-total").value, 10);
+  const out = $("#q-result");
+  if (!(v > 0)) { out.textContent = "택시비를 숫자로 입력해 주세요."; return; }
+  try {
+    const r = await api(`/room/${currentRoom}/fare`, "POST", { total: v });
+    applyState(r.state);
+    out.textContent = `${r.people}명이 나누면 1인당 ${won(r.per)}이에요.`;
+    $("#q-total").value = "";
+  } catch (e) {
+    out.textContent = e.message;
+  }
+};
+$("#q-total").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#q-calc").click(); });
+$("#q-leave").onclick = () => $("#leave").click();
+function setQuick(open) {
+  $("#qpanel").hidden = !open;
+  $("#qtoggle").setAttribute("aria-expanded", open ? "true" : "false");
+}
+$("#qtoggle").onclick = () => setQuick($("#qpanel").hidden);
+$("#text").addEventListener("focus", () => setQuick(false));
 
 $("#leave").onclick = async () => {
   if (!confirm("채팅방에서 나갈까요? 다시 들어올 수 없어요.")) return;
