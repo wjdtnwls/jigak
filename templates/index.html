@@ -18,6 +18,7 @@
     --taxi: #FFC93C;
     --taxi-deep: #E8AE12;
     --danger: #C8412F;
+    --ok: #2E9E6B;
     --radius: 14px;
   }
   @media (prefers-color-scheme: dark) {
@@ -27,6 +28,7 @@
       --ink: #EEF2F8;
       --ink-soft: #9AA7BD;
       --line: #2A3957;
+      --ok: #4CC38A;
     }
   }
   * { box-sizing: border-box; }
@@ -52,8 +54,10 @@
   .view { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 20px; overflow-y: auto; }
   h1 { font-size: 30px; font-weight: 900; margin: 8px 0 4px; letter-spacing: -0.03em; }
   h2 { font-size: 20px; font-weight: 700; margin: 0 0 6px; }
+  h3 { font-size: 16px; font-weight: 700; margin: 0 0 10px; }
   p { margin: 0 0 12px; }
   .soft { color: var(--ink-soft); font-size: 14px; }
+  .tiny { font-size: 12px; }
 
   /* 폼 */
   .tabs { display: flex; gap: 8px; margin: 20px 0 6px; }
@@ -63,18 +67,21 @@
   }
   .tab[aria-selected="true"] { background: var(--surface); color: var(--ink); border-color: var(--ink); font-weight: 700; }
   label { display: block; font-size: 13px; font-weight: 500; margin: 12px 0 4px; }
-  input {
+  input, select, textarea {
     width: 100%; padding: 12px 14px; font: inherit; color: var(--ink);
     background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
   }
-  input:focus-visible, button:focus-visible, select:focus-visible { outline: 3px solid var(--taxi); outline-offset: 1px; }
+  textarea { resize: vertical; min-height: 64px; }
+  input:focus-visible, button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--taxi); outline-offset: 1px; }
   .btn {
     width: 100%; margin-top: 18px; padding: 14px; border: 0; border-radius: 12px;
     background: var(--ink); color: var(--bg); font: inherit; font-weight: 700; font-size: 16px; cursor: pointer;
   }
+  .btn.small { margin-top: 10px; padding: 10px; font-size: 14px; }
   .btn.taxi { background: var(--taxi); color: #14213D; }
   .btn.taxi:hover:not(:disabled) { background: var(--taxi-deep); }
   .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .btn.danger { background: var(--danger); color: #fff; }
   .btn:disabled { opacity: 0.45; cursor: default; }
   .err { color: var(--danger); font-size: 14px; min-height: 20px; margin-top: 10px; }
   .link { background: none; border: 0; color: var(--ink-soft); text-decoration: underline; font: inherit; font-size: 14px; cursor: pointer; padding: 8px 0; }
@@ -87,13 +94,14 @@
   }
   .check:disabled { opacity: 0.45; cursor: default; }
   .hint { font-size: 13px; min-height: 18px; margin-top: 4px; color: var(--ink-soft); }
-  .hint.ok { color: #2E9E6B; }
+  .hint.ok { color: var(--ok); }
   .hint.bad { color: var(--danger); }
 
   /* 홈 */
-  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 14px; }
   .topbar .who { font-size: 14px; color: var(--ink-soft); }
   .topbar .brand { font-weight: 900; letter-spacing: -0.02em; }
+  .topbar .links { display: flex; align-items: center; gap: 10px; }
   .route {
     background: var(--surface); border-radius: var(--radius); padding: 22px 20px;
     display: grid; grid-template-columns: 28px 1fr; column-gap: 14px;
@@ -113,8 +121,13 @@
   }
   .route select:disabled { opacity: 0.7; cursor: default; }
   .route .gap { height: 30px; }
+  .estimate { margin-top: 12px; background: var(--surface); border-radius: var(--radius); padding: 14px 18px; }
+  .estimate .est-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 14px; }
+  .estimate .est-top strong { font-size: 20px; letter-spacing: -0.02em; }
+  .estimate .est-split { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 8px; }
+  .estimate .est-split span { font-size: 13px; padding: 4px 10px; border-radius: 999px; background: rgba(255,201,60,0.22); }
   .status {
-    margin-top: 16px; background: var(--surface); border-radius: var(--radius); padding: 16px 18px;
+    margin-top: 12px; background: var(--surface); border-radius: var(--radius); padding: 16px 18px;
     display: flex; justify-content: space-between; align-items: center; gap: 12px;
   }
   .status strong { font-size: 18px; font-variant-numeric: tabular-nums; }
@@ -123,21 +136,83 @@
   @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
 
   /* 채팅 */
-  .chat-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .chat-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-bottom: 8px; }
   .chat-head .route-line { font-size: 14px; font-weight: 700; }
   .chat-head .names { font-size: 13px; color: var(--ink-soft); }
   .chat-head .names b { color: var(--ink); font-weight: 700; }
-  .msgs { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 0; display: flex; flex-direction: column; gap: 8px; }
+  .chat-head .names .muted { text-decoration: line-through; opacity: 0.6; }
+  .tools { display: flex; gap: 6px; padding-bottom: 8px; }
+  .tool {
+    flex: 1; padding: 8px 4px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface);
+    color: var(--ink); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+  }
+  .pin { background: var(--surface); border-radius: 12px; padding: 8px 12px; font-size: 13px; border: 1px solid var(--line); }
+  .pin-row { display: flex; gap: 10px; align-items: baseline; }
+  .pin-row + .pin-row { margin-top: 2px; }
+  .pin-k { flex: none; width: 52px; color: var(--ink-soft); font-weight: 500; }
+  .pin-v { font-weight: 700; word-break: break-word; }
+  .pin-v.muted { font-weight: 500; color: var(--ink-soft); }
+  .pin-v.done { color: var(--ok); }
+  .msgs { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 0; display: flex; flex-direction: column; gap: 8px; }
   .msg { max-width: 78%; align-self: flex-start; }
   .msg .nick { font-size: 12px; color: var(--ink-soft); margin: 0 4px 2px; }
   .msg .bubble { background: var(--surface); padding: 9px 13px; border-radius: 16px 16px 16px 4px; word-break: break-word; white-space: pre-wrap; }
   .msg .time { font-size: 11px; color: var(--ink-soft); margin: 2px 4px 0; }
   .msg.me { align-self: flex-end; text-align: right; }
   .msg.me .bubble { background: var(--ink); color: var(--bg); border-radius: 16px 16px 4px 16px; text-align: left; }
-  .msg.sys { align-self: center; max-width: 90%; text-align: center; font-size: 13px; color: var(--ink-soft); background: rgba(128,128,128,0.14); padding: 5px 12px; border-radius: 999px; }
-  .composer { display: flex; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .msg.sys { align-self: center; max-width: 92%; text-align: center; font-size: 13px; color: var(--ink-soft); background: rgba(128,128,128,0.14); padding: 5px 12px; border-radius: 14px; }
+  .chips { display: flex; gap: 6px; overflow-x: auto; padding: 6px 0; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: none; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface);
+    color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
+  }
+  .composer { display: flex; gap: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
   .composer input { flex: 1; }
   .composer .btn { width: auto; margin: 0; padding: 0 18px; }
+
+  /* 팝업 */
+  dialog {
+    border: 0; border-radius: 16px; padding: 20px; width: min(92vw, 420px);
+    background: var(--surface); color: var(--ink); box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+  }
+  dialog::backdrop { background: rgba(10, 16, 30, 0.55); }
+  dialog .row { display: flex; gap: 8px; }
+  dialog .row .btn { margin-top: 14px; }
+  .radios { display: flex; gap: 8px; margin-top: 4px; }
+  .radios label {
+    flex: 1; margin: 0; display: flex; align-items: center; gap: 6px; padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: 10px; font-size: 14px; cursor: pointer;
+  }
+  .radios input { width: auto; margin: 0; }
+  .checkline { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 14px; }
+  .checkline input { width: auto; margin: 0; }
+  .toast {
+    position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+    max-width: min(90vw, 440px); background: var(--ink); color: var(--bg); padding: 10px 16px;
+    border-radius: 12px; font-size: 14px; z-index: 10; text-align: center;
+  }
+
+  /* 마이페이지 */
+  .card { background: var(--surface); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 12px; }
+  .kv { font-size: 14px; color: var(--ink-soft); }
+  .kv b { color: var(--ink); }
+  .list { display: flex; flex-direction: column; gap: 10px; }
+  .item { border-top: 1px solid var(--line); padding-top: 10px; }
+  .item:first-child { border-top: 0; padding-top: 0; }
+  .item .top { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--ink-soft); }
+  .item .route-t { font-weight: 700; font-size: 15px; margin: 2px 0; }
+  .item .line { font-size: 13px; color: var(--ink-soft); }
+  .badge { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: var(--taxi); color: #14213D; }
+  .people { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .person { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 3px 4px 3px 10px; border: 1px solid var(--line); border-radius: 999px; }
+  .mini {
+    font: inherit; font-size: 12px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line);
+    background: transparent; color: var(--ink-soft); cursor: pointer;
+  }
+  .mini.on { color: var(--danger); border-color: var(--danger); }
+  .row-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; }
+  .empty { font-size: 13px; color: var(--ink-soft); }
 </style>
 </head>
 <body>
@@ -179,8 +254,9 @@
   <section class="view" id="home" hidden>
     <div class="topbar">
       <span class="brand">지각하지말자</span>
-      <span>
+      <span class="links">
         <span class="who" id="who"></span>
+        <button class="link" id="to-mypage">마이페이지</button>
         <button class="link" id="logout">로그아웃</button>
       </span>
     </div>
@@ -195,6 +271,12 @@
         <small>도착 대학</small>
         <select id="dest" aria-label="도착 대학"></select>
       </div>
+    </div>
+    <div class="estimate" id="estimate" hidden>
+      <div class="est-top"><span>예상 택시비</span><strong id="est-fare"></strong></div>
+      <div class="soft" id="est-range"></div>
+      <div class="est-split" id="est-split"></div>
+      <div class="soft tiny">부산 중형택시 요금(2023년 인상분)과 대략적인 거리로 계산한 참고용 금액이에요. 심야 할증과 교통 상황에 따라 실제 요금은 달라져요.</div>
     </div>
     <div class="status" id="queue-box" hidden>
       <span><span class="pulse"></span>같은 조건 대기 <b id="q-count">1</b>명</span>
@@ -216,25 +298,148 @@
       </div>
       <button class="link" id="leave">나가기</button>
     </div>
+    <div class="tools">
+      <button class="tool" id="tool-meet" type="button">약속 장소</button>
+      <button class="tool" id="tool-fare" type="button">택시비 정산</button>
+      <button class="tool" id="tool-report" type="button">신고·차단</button>
+    </div>
+    <div class="pin" id="pin">
+      <div class="pin-row"><span class="pin-k">만날 곳</span><span class="pin-v" id="pin-meet"></span></div>
+      <div class="pin-row"><span class="pin-k">택시비</span><span class="pin-v" id="pin-fare"></span></div>
+    </div>
     <div class="msgs" id="msgs" aria-live="polite"></div>
+    <div class="chips" id="chips" aria-label="빠른 메시지"></div>
     <form class="composer" id="composer" onsubmit="return false">
       <input id="text" maxlength="500" placeholder="메시지 입력" autocomplete="off" aria-label="메시지">
       <button class="btn" id="send" type="submit">보내기</button>
     </form>
   </section>
 
+  <!-- 마이페이지 -->
+  <section class="view" id="mypage" hidden>
+    <div class="topbar">
+      <button class="link" id="mp-back">← 돌아가기</button>
+      <span class="brand">마이페이지</span>
+    </div>
+
+    <div class="card">
+      <h3>내 정보</h3>
+      <div class="kv">아이디 <b id="mp-username"></b></div>
+      <label for="mp-nick">닉네임</label>
+      <div class="field-row">
+        <input id="mp-nick" maxlength="12">
+        <button class="check" id="mp-nick-check" type="button">중복확인</button>
+      </div>
+      <div class="hint" id="mp-nick-msg"></div>
+      <button class="btn small" id="mp-nick-save" type="button">닉네임 저장</button>
+    </div>
+
+    <div class="card">
+      <h3>비밀번호 변경</h3>
+      <label for="mp-pw-cur">현재 비밀번호</label>
+      <input id="mp-pw-cur" type="password" autocomplete="current-password">
+      <label for="mp-pw-new">새 비밀번호 (8자 이상)</label>
+      <input id="mp-pw-new" type="password" autocomplete="new-password">
+      <label for="mp-pw-new2">새 비밀번호 확인</label>
+      <input id="mp-pw-new2" type="password" autocomplete="new-password">
+      <div class="hint" id="mp-pw-msg"></div>
+      <button class="btn small" id="mp-pw-save" type="button">비밀번호 변경</button>
+    </div>
+
+    <div class="card">
+      <h3>이용내역</h3>
+      <div class="list" id="mp-history"></div>
+    </div>
+
+    <div class="card">
+      <h3>차단한 사용자</h3>
+      <div class="list" id="mp-blocks"></div>
+    </div>
+
+    <div class="card">
+      <h3>회원탈퇴</h3>
+      <p class="soft">탈퇴하면 이 계정으로 다시 로그인할 수 없어요. 진행 중인 채팅방에서도 나가요.</p>
+      <label for="mp-del-pw">비밀번호 확인</label>
+      <input id="mp-del-pw" type="password" autocomplete="current-password">
+      <div class="hint" id="mp-del-msg"></div>
+      <button class="btn small danger" id="mp-del" type="button">회원탈퇴</button>
+    </div>
+  </section>
+
 </div>
+
+<!-- 약속 장소 -->
+<dialog id="dlg-meet" aria-labelledby="meet-title">
+  <h3 id="meet-title">약속 장소 공유</h3>
+  <p class="soft">정하면 채팅방 위쪽에 고정돼서 모두가 볼 수 있어요.</p>
+  <label for="meet-place">만날 장소</label>
+  <input id="meet-place" maxlength="40" placeholder="예: 서면역 7번 출구 앞">
+  <label for="meet-time">만날 시간 (선택)</label>
+  <input id="meet-time" type="time">
+  <div class="err" id="meet-err" role="alert"></div>
+  <div class="row">
+    <button class="btn ghost" id="meet-cancel" type="button">닫기</button>
+    <button class="btn" id="meet-save" type="button">공유하기</button>
+  </div>
+</dialog>
+
+<!-- 택시비 정산 -->
+<dialog id="dlg-fare" aria-labelledby="fare-title">
+  <h3 id="fare-title">택시비 1/N 정산</h3>
+  <p class="soft">택시비를 결제한 사람이 금액을 입력하면, 지금 방에 있는 인원수로 나눠서 보여줘요.</p>
+  <label for="fare-total">결제한 택시비 (원)</label>
+  <input id="fare-total" type="number" inputmode="numeric" min="1000" step="100" placeholder="예: 12000">
+  <div class="hint ok" id="fare-preview"></div>
+  <div class="soft tiny" id="fare-est"></div>
+  <div class="err" id="fare-err" role="alert"></div>
+  <div class="row">
+    <button class="btn ghost" id="fare-cancel" type="button">닫기</button>
+    <button class="btn" id="fare-save" type="button">정산하기</button>
+  </div>
+</dialog>
+
+<!-- 신고 / 차단 -->
+<dialog id="dlg-report" aria-labelledby="rp-title">
+  <h3 id="rp-title">신고·차단</h3>
+  <label for="rp-target">대상</label>
+  <select id="rp-target"></select>
+  <label>무엇을 할까요?</label>
+  <div class="radios">
+    <label><input type="radio" name="rp-mode" value="report" checked> 신고하기</label>
+    <label><input type="radio" name="rp-mode" value="block"> 차단만 하기</label>
+  </div>
+  <div id="rp-report-fields">
+    <label for="rp-reason">신고 사유</label>
+    <select id="rp-reason"></select>
+    <label for="rp-detail">자세한 내용 (선택)</label>
+    <textarea id="rp-detail" maxlength="300" placeholder="어떤 일이 있었는지 적어주세요."></textarea>
+    <div class="checkline"><input type="checkbox" id="rp-also" checked><label for="rp-also" style="margin:0">이 사람도 함께 차단하기</label></div>
+  </div>
+  <p class="soft tiny" style="margin-top:10px">차단하면 이 사람의 메시지가 보이지 않고, 앞으로 같은 방에 매칭되지 않아요. 차단 해제는 마이페이지에서 할 수 있어요.</p>
+  <div class="err" id="rp-err" role="alert"></div>
+  <div class="row">
+    <button class="btn ghost" id="rp-cancel" type="button">닫기</button>
+    <button class="btn danger" id="rp-submit" type="button">확인</button>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" hidden role="status"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
 <script>
 const CFG = {{ cfg|tojson }};
 const $ = (s) => document.querySelector(s);
-const VIEWS = ["auth", "home", "room"];
+const VIEWS = ["auth", "home", "room", "mypage"];
+const QUICK = ["지금 가는 중이에요", "5분 정도 늦어요", "도착했어요", "택시 잡았어요", "어디 계세요?", "알겠어요"];
 
 let me = null, socket = null, currentRoom = null;
 let authMode = "login";
 let pollTimer = null, tickTimer = null, waitStart = 0, isWaiting = false;
+let roomMembers = [], blockedIds = new Set(), roomEst = null, roomSt = { meet: null, fare: null };
 const seen = new Set();
+
+const won = (n) => Number(n).toLocaleString("ko-KR") + "원";
+const perHead = (total, n) => Math.ceil(total / n / 100) * 100;
 
 function show(name) { VIEWS.forEach((v) => ($("#" + v).hidden = v !== name)); }
 
@@ -248,6 +453,20 @@ async function api(path, method = "GET", body) {
   try { data = await res.json(); } catch (e) {}
   if (!res.ok) throw new Error(data.error || "문제가 생겼어요. 잠시 후 다시 시도해주세요.");
   return data;
+}
+
+let toastTimer = null;
+function toast(text) {
+  const t = $("#toast");
+  t.textContent = text;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 3000);
+}
+
+function setHint(el, text, kind) {
+  el.textContent = text;
+  el.className = "hint" + (kind ? " " + kind : "");
 }
 
 /* ───── 로그인 / 회원가입 ───── */
@@ -305,11 +524,7 @@ function fieldValue(field) {
   return field === "username" ? v.toLowerCase() : v;
 }
 
-function setMsg(field, text, kind) {
-  const el = $("#" + field + "-msg");
-  el.textContent = text;
-  el.className = "hint" + (kind ? " " + kind : "");
-}
+function setMsg(field, text, kind) { setHint($("#" + field + "-msg"), text, kind); }
 
 function resetChecks() {
   checked.username = null;
@@ -367,6 +582,7 @@ function connectSocket() {
   socket.on("matched", (d) => openRoom(d.room_id));
   socket.on("message", addMessage);
   socket.on("members", (d) => { if (d.room_id === currentRoom) renderMembers(d.members); });
+  socket.on("room_state", (d) => { if (d.room_id === currentRoom) applyState(d.state); });
 }
 
 /* ───── 홈 / 매칭 ───── */
@@ -400,10 +616,43 @@ function loadChoice() {
 }
 function updateFind() { $("#find").disabled = !($("#origin").value && $("#dest").value); }
 
+/* 예상 택시비 */
+const estCache = new Map();
+async function loadEstimate(origin, dest) {
+  const key = origin + "|" + dest;
+  if (estCache.has(key)) return estCache.get(key);
+  const r = await api("/estimate?origin=" + encodeURIComponent(origin) + "&dest=" + encodeURIComponent(dest));
+  estCache.set(key, r.estimate);
+  return r.estimate;
+}
+
+async function updateEstimate() {
+  const o = $("#origin").value, d = $("#dest").value, box = $("#estimate");
+  if (!o || !d) { box.hidden = true; return; }
+  try {
+    const e = await loadEstimate(o, d);
+    if (o !== $("#origin").value || d !== $("#dest").value) return; // 그 사이 다른 걸 골랐으면 무시
+    if (!e) { box.hidden = true; return; }
+    $("#est-fare").textContent = "약 " + won(e.fare);
+    $("#est-range").textContent = `거리 약 ${e.km}km · 보통 ${won(e.low)} ~ ${won(e.high)}`;
+    const sp = $("#est-split");
+    sp.textContent = "";
+    [2, 3, 4].forEach((n) => {
+      const s = document.createElement("span");
+      s.textContent = `${n}명이면 1인당 ${won(perHead(e.fare, n))}`;
+      sp.appendChild(s);
+    });
+    box.hidden = false;
+  } catch (err) {
+    box.hidden = true;
+  }
+}
+
 fillSelect($("#origin"), CFG.stations, "출발역을 선택하세요");
 fillSelect($("#dest"), CFG.universities, "도착 대학을 선택하세요");
-$("#origin").onchange = () => { saveChoice(); updateFind(); };
-$("#dest").onchange = () => { saveChoice(); updateFind(); };
+const onRouteChange = () => { saveChoice(); updateFind(); updateEstimate(); };
+$("#origin").onchange = onRouteChange;
+$("#dest").onchange = onRouteChange;
 
 function renderHome(queue) {
   currentRoom = null;
@@ -414,6 +663,7 @@ function renderHome(queue) {
   show("home");
   if (!(queue && queue.waiting)) loadChoice();
   applyQueue(queue);
+  updateEstimate();
 }
 
 function applyQueue(q) {
@@ -476,18 +726,47 @@ function hhmm(s) {
 }
 
 function renderMembers(list) {
+  roomMembers = list;
   const box = $("#members");
   box.textContent = `${list.length}명 · `;
   list.forEach((m, i) => {
     const b = document.createElement("b");
     b.textContent = m.nickname;
+    if (blockedIds.has(m.id)) b.className = "muted";
     box.appendChild(b);
     if (i < list.length - 1) box.append(", ");
   });
+  renderPin();
+}
+
+function renderPin() {
+  const meet = roomSt && roomSt.meet;
+  const meetEl = $("#pin-meet");
+  meetEl.textContent = meet ? `${meet.place}${meet.time ? " · " + meet.time : ""}` : "아직 안 정했어요";
+  meetEl.classList.toggle("muted", !meet);
+
+  const fare = roomSt && roomSt.fare;
+  const n = Math.max(roomMembers.length, 1);
+  const fareEl = $("#pin-fare");
+  if (fare) {
+    fareEl.textContent = `${won(fare.total)} · ${fare.people}명이면 1인당 ${won(fare.per)} · 결제 ${fare.payer}`;
+  } else if (roomEst) {
+    fareEl.textContent = `예상 약 ${won(roomEst.fare)} · ${n}명이면 1인당 약 ${won(perHead(roomEst.fare, n))}`;
+  } else {
+    fareEl.textContent = "아직 정산 전이에요";
+  }
+  fareEl.classList.toggle("done", !!fare);
+  fareEl.classList.toggle("muted", !fare);
+}
+
+function applyState(state) {
+  roomSt = state || { meet: null, fare: null };
+  renderPin();
 }
 
 function addMessage(m) {
   if (m.room_id !== currentRoom || seen.has(m.id)) return;
+  if (m.user_id !== null && blockedIds.has(m.user_id)) return;
   seen.add(m.id);
   const box = $("#msgs");
   const row = document.createElement("div");
@@ -497,6 +776,7 @@ function addMessage(m) {
   } else {
     const mine = m.user_id === me.id;
     row.className = "msg" + (mine ? " me" : "");
+    row.dataset.uid = m.user_id;
     if (!mine) {
       const nick = document.createElement("div");
       nick.className = "nick";
@@ -516,15 +796,18 @@ function addMessage(m) {
   if (nearBottom || m.user_id === me.id) box.scrollTop = box.scrollHeight;
 }
 
-async function openRoom(rid) {
+async function openRoom(rid, force = false) {
   clearInterval(tickTimer);
   clearInterval(pollTimer);
-  if (currentRoom === rid) return;
+  if (currentRoom === rid && !force) return;
   try {
     const r = await api("/room/" + rid);
     currentRoom = rid;
     seen.clear();
     $("#msgs").textContent = "";
+    blockedIds = new Set(r.blocked || []);
+    roomEst = r.estimate || null;
+    roomSt = r.state || { meet: null, fare: null };
     $("#room-route").textContent = `${r.origin} → ${r.dest}`;
     renderMembers(r.members);
     r.messages.forEach(addMessage);
@@ -538,12 +821,26 @@ async function openRoom(rid) {
   }
 }
 
+function sendText(text) {
+  text = (text || "").trim();
+  if (!text || !currentRoom) return;
+  socket.emit("send", { room_id: currentRoom, text });
+}
+
 $("#composer").addEventListener("submit", () => {
   const input = $("#text");
-  const text = input.value.trim();
-  if (!text) return;
-  socket.emit("send", { room_id: currentRoom, text });
+  sendText(input.value);
   input.value = "";
+});
+
+/* 빠른 메시지 */
+QUICK.forEach((t) => {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "chip";
+  b.textContent = t;
+  b.onclick = () => sendText(t);
+  $("#chips").appendChild(b);
 });
 
 $("#leave").onclick = async () => {
@@ -554,6 +851,290 @@ $("#leave").onclick = async () => {
   const info = await api("/me");
   renderHome(info.queue);
 };
+
+/* 약속 장소 */
+$("#tool-meet").onclick = () => {
+  const m = roomSt && roomSt.meet;
+  $("#meet-place").value = m ? m.place : "";
+  $("#meet-time").value = m && m.time ? m.time : "";
+  $("#meet-err").textContent = "";
+  $("#dlg-meet").showModal();
+  $("#meet-place").focus();
+};
+$("#meet-cancel").onclick = () => $("#dlg-meet").close();
+$("#meet-save").onclick = async () => {
+  $("#meet-err").textContent = "";
+  try {
+    const r = await api(`/room/${currentRoom}/meet`, "POST", {
+      place: $("#meet-place").value, time: $("#meet-time").value,
+    });
+    applyState(r.state);
+    $("#dlg-meet").close();
+    toast("만날 장소를 공유했어요.");
+  } catch (e) {
+    $("#meet-err").textContent = e.message;
+  }
+};
+$("#meet-place").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#meet-save").click(); });
+
+/* 택시비 정산 */
+function updateFarePreview() {
+  const n = Math.max(roomMembers.length, 1);
+  const v = parseInt($("#fare-total").value, 10);
+  $("#fare-preview").textContent = v > 0
+    ? `${n}명이 나누면 1인당 ${won(Math.ceil(v / n / 10) * 10)}`
+    : `지금 방에 있는 ${n}명 기준으로 1인당 금액을 계산해요.`;
+}
+$("#tool-fare").onclick = () => {
+  $("#fare-total").value = "";
+  $("#fare-err").textContent = "";
+  $("#fare-est").textContent = roomEst ? `참고: 예상 택시비는 약 ${won(roomEst.fare)}이에요.` : "";
+  updateFarePreview();
+  $("#dlg-fare").showModal();
+  $("#fare-total").focus();
+};
+$("#fare-total").addEventListener("input", updateFarePreview);
+$("#fare-total").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#fare-save").click(); });
+$("#fare-cancel").onclick = () => $("#dlg-fare").close();
+$("#fare-save").onclick = async () => {
+  $("#fare-err").textContent = "";
+  try {
+    const r = await api(`/room/${currentRoom}/fare`, "POST", { total: parseInt($("#fare-total").value, 10) });
+    applyState(r.state);
+    $("#dlg-fare").close();
+    toast(`정산했어요. 1인당 ${won(r.per)}이에요.`);
+  } catch (e) {
+    $("#fare-err").textContent = e.message;
+  }
+};
+
+/* 신고 / 차단 */
+CFG.reasons.forEach((t) => {
+  const o = document.createElement("option");
+  o.value = t;
+  o.textContent = t;
+  $("#rp-reason").appendChild(o);
+});
+function syncReportMode() {
+  const mode = document.querySelector('input[name="rp-mode"]:checked').value;
+  $("#rp-report-fields").hidden = mode !== "report";
+}
+document.querySelectorAll('input[name="rp-mode"]').forEach((r) => r.addEventListener("change", syncReportMode));
+
+$("#tool-report").onclick = () => {
+  const others = roomMembers.filter((m) => m.id !== me.id);
+  if (!others.length) { toast("신고하거나 차단할 상대가 없어요."); return; }
+  const sel = $("#rp-target");
+  sel.textContent = "";
+  others.forEach((m) => {
+    const o = document.createElement("option");
+    o.value = m.id;
+    o.textContent = m.nickname + (blockedIds.has(m.id) ? " (차단함)" : "");
+    sel.appendChild(o);
+  });
+  document.querySelector('input[name="rp-mode"][value="report"]').checked = true;
+  $("#rp-detail").value = "";
+  $("#rp-also").checked = true;
+  $("#rp-err").textContent = "";
+  syncReportMode();
+  $("#dlg-report").showModal();
+};
+$("#rp-cancel").onclick = () => $("#dlg-report").close();
+
+function applyBlock(uid) {
+  blockedIds.add(uid);
+  document.querySelectorAll(`#msgs [data-uid="${uid}"]`).forEach((el) => el.remove());
+  renderMembers(roomMembers);
+}
+
+$("#rp-submit").onclick = async () => {
+  $("#rp-err").textContent = "";
+  const target = parseInt($("#rp-target").value, 10);
+  const mode = document.querySelector('input[name="rp-mode"]:checked').value;
+  try {
+    if (mode === "report") {
+      const also = $("#rp-also").checked;
+      await api("/report", "POST", {
+        room_id: currentRoom, target_id: target, reason: $("#rp-reason").value,
+        detail: $("#rp-detail").value, also_block: also,
+      });
+      if (also) applyBlock(target);
+      toast(also ? "신고가 접수됐고, 이 사람을 차단했어요." : "신고가 접수됐어요.");
+    } else {
+      await api("/block", "POST", { target_id: target });
+      applyBlock(target);
+      toast("차단했어요. 이 사람의 메시지는 보이지 않아요.");
+    }
+    $("#dlg-report").close();
+  } catch (e) {
+    $("#rp-err").textContent = e.message;
+  }
+};
+
+/* ───── 마이페이지 ───── */
+$("#to-mypage").onclick = () => openMypage();
+$("#mp-back").onclick = async () => {
+  const info = await api("/me");
+  if (info.room_id) return openRoom(info.room_id);
+  renderHome(info.queue);
+};
+
+function openMypage() {
+  show("mypage");
+  $("#mp-username").textContent = me.username;
+  $("#mp-nick").value = me.nickname;
+  ["#mp-nick-msg", "#mp-pw-msg", "#mp-del-msg"].forEach((s) => setHint($(s), ""));
+  ["#mp-pw-cur", "#mp-pw-new", "#mp-pw-new2", "#mp-del-pw"].forEach((s) => { $(s).value = ""; });
+  loadHistory();
+  loadBlocks();
+}
+
+$("#mp-nick-check").onclick = async () => {
+  const v = $("#mp-nick").value.trim();
+  try {
+    const r = await api("/check?field=nickname&value=" + encodeURIComponent(v));
+    setHint($("#mp-nick-msg"), r.message, r.available ? "ok" : "bad");
+  } catch (e) { setHint($("#mp-nick-msg"), e.message, "bad"); }
+};
+$("#mp-nick-save").onclick = async () => {
+  try {
+    const r = await api("/me/nickname", "POST", { nickname: $("#mp-nick").value.trim() });
+    me.nickname = r.nickname;
+    $("#who").textContent = `${me.nickname}님`;
+    setHint($("#mp-nick-msg"), "닉네임을 바꿨어요.", "ok");
+  } catch (e) { setHint($("#mp-nick-msg"), e.message, "bad"); }
+};
+
+$("#mp-pw-save").onclick = async () => {
+  const cur = $("#mp-pw-cur").value, nw = $("#mp-pw-new").value;
+  if (nw !== $("#mp-pw-new2").value) return setHint($("#mp-pw-msg"), "새 비밀번호 확인이 일치하지 않아요.", "bad");
+  try {
+    await api("/me/password", "POST", { current: cur, new: nw });
+    ["#mp-pw-cur", "#mp-pw-new", "#mp-pw-new2"].forEach((s) => { $(s).value = ""; });
+    setHint($("#mp-pw-msg"), "비밀번호를 바꿨어요.", "ok");
+  } catch (e) { setHint($("#mp-pw-msg"), e.message, "bad"); }
+};
+
+$("#mp-del").onclick = async () => {
+  if (!confirm("정말 탈퇴할까요? 되돌릴 수 없어요.")) return;
+  try {
+    await api("/me/delete", "POST", { password: $("#mp-del-pw").value });
+    location.reload();
+  } catch (e) { setHint($("#mp-del-msg"), e.message, "bad"); }
+};
+
+function fmtDate(s) {
+  const d = new Date(s.replace(" ", "T") + "Z");
+  return d.toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function emptyNote(text) {
+  const d = document.createElement("div");
+  d.className = "empty";
+  d.textContent = text;
+  return d;
+}
+
+async function loadHistory() {
+  const box = $("#mp-history");
+  box.textContent = "";
+  try {
+    const { history } = await api("/history");
+    if (!history.length) return box.appendChild(emptyNote("아직 이용 내역이 없어요."));
+    history.forEach((h) => {
+      const it = document.createElement("div");
+      it.className = "item";
+
+      const top = document.createElement("div");
+      top.className = "top";
+      const date = document.createElement("span");
+      date.textContent = fmtDate(h.created_at);
+      top.appendChild(date);
+      if (h.active) {
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = "진행 중";
+        top.appendChild(badge);
+      }
+      it.appendChild(top);
+
+      const route = document.createElement("div");
+      route.className = "route-t";
+      route.textContent = `${h.origin} → ${h.dest}`;
+      it.appendChild(route);
+
+      const fare = document.createElement("div");
+      fare.className = "line";
+      fare.textContent = h.fare_total
+        ? `택시비 ${won(h.fare_total)} · ${h.fare_people}명 · 1인당 ${won(h.fare_per)}`
+        : "정산 기록 없음";
+      it.appendChild(fare);
+
+      if (h.members.length) {
+        const people = document.createElement("div");
+        people.className = "people";
+        h.members.forEach((m) => {
+          const p = document.createElement("span");
+          p.className = "person";
+          const nm = document.createElement("span");
+          nm.textContent = m.nickname;
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "mini" + (m.blocked ? " on" : "");
+          btn.textContent = m.blocked ? "차단 해제" : "차단";
+          btn.dataset.uid = m.id;
+          btn.dataset.blocked = m.blocked ? "1" : "0";
+          p.append(nm, btn);
+          people.appendChild(p);
+        });
+        it.appendChild(people);
+      }
+      box.appendChild(it);
+    });
+  } catch (e) {
+    box.appendChild(emptyNote(e.message));
+  }
+}
+
+$("#mp-history").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button.mini");
+  if (!btn) return;
+  const uid = parseInt(btn.dataset.uid, 10);
+  const wasBlocked = btn.dataset.blocked === "1";
+  try {
+    await api(wasBlocked ? "/unblock" : "/block", "POST", { target_id: uid });
+    await Promise.all([loadHistory(), loadBlocks()]);
+  } catch (err) { toast(err.message); }
+});
+
+async function loadBlocks() {
+  const box = $("#mp-blocks");
+  box.textContent = "";
+  try {
+    const { blocks } = await api("/blocks");
+    if (!blocks.length) return box.appendChild(emptyNote("차단한 사용자가 없어요."));
+    blocks.forEach((b) => {
+      const row = document.createElement("div");
+      row.className = "row-between";
+      const nm = document.createElement("span");
+      nm.textContent = b.nickname;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "mini";
+      btn.textContent = "차단 해제";
+      btn.onclick = async () => {
+        try {
+          await api("/unblock", "POST", { target_id: b.id });
+          await Promise.all([loadHistory(), loadBlocks()]);
+        } catch (err) { toast(err.message); }
+      };
+      row.append(nm, btn);
+      box.appendChild(row);
+    });
+  } catch (e) {
+    box.appendChild(emptyNote(e.message));
+  }
+}
 
 /* ───── 시작 ───── */
 (async function boot() {
